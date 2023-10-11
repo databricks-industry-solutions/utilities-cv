@@ -98,9 +98,9 @@ label_df.write.mode('overwrite').saveAsTable(f"{CATALOG}.{SCHEMA}.label_data")
 # COMMAND ----------
 
 mask_df = (
-  spark.sql("""
-          select A.file_name,content, to_json(label) as label from david_radford.utility_cv_project.raw_images_bronze A
-          left join david_radford.utility_cv_project.label_data B using(file_name)
+  spark.sql(f"""
+          select A.file_name,content, to_json(label) as label from {CATALOG}.{SCHEMA}.raw_images_bronze A
+          left join {CATALOG}.{SCHEMA}.label_data B using(file_name)
           """).withColumn("mask_labels",my_conv('label'))
   .withColumn("mask_binary", create_mask_from_polygons("content", "mask_labels"))
   .drop("content")
