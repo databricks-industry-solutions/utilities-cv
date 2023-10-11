@@ -113,9 +113,9 @@ mask_df.write.mode("overwrite").saveAsTable(f"{CATALOG}.{SCHEMA}.silver_mask")
 # COMMAND ----------
 
 gold_df = (
-  spark.sql("""
+  spark.sql(f"""
             select mask_binary, content as image_binary, A.file_name
-            from david_radford.utility_cv_project.raw_images_bronze A join david_radford.utility_cv_project.silver_mask B using(file_name)
+            from {CATALOG}.{SCHEMA}.raw_images_bronze A join {CATALOG}.{SCHEMA}.silver_mask B using(file_name)
             """)
 )
 gold_df.write.mode("overwrite").saveAsTable(f"{CATALOG}.{SCHEMA}.gold_asset_inventory")

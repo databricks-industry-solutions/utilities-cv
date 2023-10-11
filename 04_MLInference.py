@@ -27,8 +27,8 @@ import json
 from PIL import Image 
 import pandas as pd
 import io
-# with Image.open('/Workspace/Users/david.radford@databricks.com/Demos/ComputerVision/Startover/Pole_Transformer_petastorm_stuck_new/10.jpg') as image:
-image = Image.open('/Workspace/Users/david.radford@databricks.com/Demos/ComputerVision/Startover/Pole_Transformer_petastorm_stuck_new/10.jpg').resize((640,640))
+
+image = Image.open('./images/10.jpg').resize((640,640))
 
 output = io.BytesIO()
 image.save(output, format='JPEG')
@@ -48,7 +48,6 @@ for k in _labels.keys():
   for x in _labels[k]:
     color = color_map[k]
     draw.rectangle(x, outline=color, width=3)
-    # draw.polygon(x, outline=color, width=3)
 image
 
 # COMMAND ----------

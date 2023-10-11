@@ -165,7 +165,7 @@ experiment = mlflow.set_experiment(experiment_path)
 # COMMAND ----------
 
 BATCH_SIZE = 16
-MAX_EPOCHS = 5
+MAX_EPOCHS = 1
 WORKERS_COUNT = 1
 READER_POOL_TYPE = "thread"
 RESULTS_QUEUE_SIZE = 20
@@ -263,31 +263,31 @@ def main_training_loop(num_tasks, num_proc_per_task, run_id=None):
 
 # COMMAND ----------
 
-# NUM_TASKS = 1
-# NUM_PROC_PER_TASK = 1
-# mlflow.pytorch.autolog() 
+NUM_TASKS = 1
+NUM_PROC_PER_TASK = 1
+mlflow.pytorch.autolog() 
 
-# from mlflow.types.schema import Schema, ColSpec, TensorSpec
-# from mlflow.models.signature import ModelSignature
+from mlflow.types.schema import Schema, ColSpec, TensorSpec
+from mlflow.models.signature import ModelSignature
 
-# mlflow.pytorch.autolog()
-# input_schema = Schema(
-#   [
-#       ColSpec("binary","data_input")
-#   ]
-# )
+mlflow.pytorch.autolog()
+input_schema = Schema(
+  [
+      ColSpec("binary","data_input")
+  ]
+)
 
-# output_schema = Schema([
-#   ColSpec("string","data_output")
-# ])
-# signature = ModelSignature(inputs=input_schema, outputs=output_schema)
+output_schema = Schema([
+  ColSpec("string","data_output")
+])
+signature = ModelSignature(inputs=input_schema, outputs=output_schema)
 
-# with mlflow.start_run() as run:
-#   model, ckpt_path = main_training_loop(NUM_TASKS, NUM_PROC_PER_TASK)
-#   mlflow.pyfunc.log_model(artifact_path="model", 
-#                           python_model=CVModelWrapper(model),
-#                           signature=signature,
-#                           )
+with mlflow.start_run() as run:
+  model, ckpt_path = main_training_loop(NUM_TASKS, NUM_PROC_PER_TASK)
+  mlflow.pyfunc.log_model(artifact_path="model", 
+                          python_model=CVModelWrapper(model),
+                          signature=signature,
+                          )
 
 # COMMAND ----------
 
