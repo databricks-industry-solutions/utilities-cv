@@ -225,7 +225,7 @@ def main_training_loop(num_tasks, num_proc_per_task, run_id=None):
  
   datamodule = UtilityDataModule(train_parquet_files=train_parquet_files,
                                   val_parquet_files=val_parquet_files, batch_size=BATCH_SIZE,
-                                  workers_count=WORKERS_COUNT,
+                                  workers_count=1,
                                   reader_pool_type=READER_POOL_TYPE,
                                   device_id=node_rank,
                                   device_count=WORLD_SIZE,
