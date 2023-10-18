@@ -169,6 +169,7 @@ MAX_EPOCHS = 1
 READER_POOL_TYPE = "thread"
 RESULTS_QUEUE_SIZE = 20
 from math import ceil
+import os
 
 def main_training_loop(num_tasks, num_proc_per_task, run_id=None):
   # from MyDataModule import ImageNetDataModule
@@ -187,6 +188,8 @@ def main_training_loop(num_tasks, num_proc_per_task, run_id=None):
   from mlflow.types.schema import Schema, ColSpec, TensorSpec
   from mlflow.models.signature import ModelSignature
 
+  os.mkdir('/tmp/utility_asset_model')
+  os.chdir('/tmp/utility_asset_model')
   mlflow.pytorch.autolog()
   input_schema = Schema(
     [
@@ -246,10 +249,6 @@ def main_training_loop(num_tasks, num_proc_per_task, run_id=None):
                        num_sanity_val_steps=0,
                        limit_val_batches=val_steps_per_epoch,
                        reload_dataloaders_every_n_epochs=1,
-                       
-                      #  use_distributed_sampler=False,
-                      #  default_root_dir='/tmp/david_radford/utility_asset/petstorm3',
-                      #  logger=mlf_logger,
                        enable_checkpointing=True,
                        **kwargs,
                        )
