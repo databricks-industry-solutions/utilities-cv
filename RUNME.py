@@ -114,7 +114,7 @@ job_json = {
                     },
                     "data_security_mode": "SINGLE_USER",
                     "num_workers": 0,
-                    "node_type_id": {"AWS": "i3.xlarge", "MSA": "Standard_NC4as_T4_v3"}, # this accelerator does not support GCP
+                    "node_type_id": {"AWS": "i3.xlarge", "MSA": "Standard_DS3_v2","GCP":"c2-standard-4"}, # this accelerator does not support GCP
                     "custom_tags": {
                         "usage": "solacc_testing"
                     },
@@ -126,7 +126,7 @@ job_json = {
                     "spark_version": "13.3.x-gpu-ml-scala2.12",
                     "data_security_mode": "SINGLE_USER",
                     "num_workers": 2,
-                    "node_type_id": {"AWS": "g4dn.xlarge", "MSA": "Standard_DS3_v2"}, # this accelerator does not support GCP
+                    "node_type_id": {"AWS": "g4dn.xlarge", "MSA": "Standard_NC4as_T4_v3","GCP":"g2-standard-4"}, # this accelerator does not support GCP
                     "custom_tags": {
                         "usage": "solacc_testing"
                     },

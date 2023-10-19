@@ -333,6 +333,7 @@ _register = mlflow.register_model(f"runs:/{run_id}/model", f"{CATALOG}.{SCHEMA}.
 client = MlflowClient()
 client.set_registered_model_alias(f"{CATALOG}.{SCHEMA}.{model_name}","Production", int(_register.version))
 
+
 # COMMAND ----------
 
 
