@@ -8,6 +8,7 @@
 
 # COMMAND ----------
 
+# DBTITLE 1,Load Model From Unity Catalog
 
 import mlflow
 
@@ -20,6 +21,12 @@ logged_model = f'models:/{CATALOG}.{SCHEMA}.{model_name}@Production'
 loaded_model = mlflow.pyfunc.load_model(logged_model)
 
 
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC # Perform Inference
+# MAGIC This does simple inference on a sample image and draws bounding boxes around the assets
 
 # COMMAND ----------
 
@@ -52,8 +59,21 @@ image
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC # Scaling
+# MAGIC The above function won't scale well because it is using a single node with pandas. To distribute this we will load the same model on spark and perform distributed inference for a few records.
+# MAGIC
+
+# COMMAND ----------
+
 spark_model = mlflow.pyfunc.spark_udf(spark, model_uri=logged_model, result_type='string')
 display(spark.table(f"{CATALOG}.{SCHEMA}.gold_asset_inventory").select("image_binary").limit(5).withColumn("labels",spark_model("image_binary")))
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC # Scaling Round 2
+# MAGIC Finally we will run inference across the entire source table to simulate real production inference. Ideally each image would have geo locations attached to it as well to save as part of the inference. In this dataset example the geo locations were removed.
 
 # COMMAND ----------
 

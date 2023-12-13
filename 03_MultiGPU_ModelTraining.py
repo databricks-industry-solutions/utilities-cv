@@ -13,13 +13,19 @@
 
 import mlflow
 import torch
-
+from deltalake import DeltaTable
 from petastorm.spark import SparkDatasetConverter, make_spark_converter
 from petastorm import TransformSpec
 
 # COMMAND ----------
 
-from deltalake import DeltaTable
+# MAGIC %md
+# MAGIC # Get Delta Files
+# MAGIC We need to get a list of delta files to pass to petastorm for more efficient distributed training.
+
+# COMMAND ----------
+
+
 training_dt = DeltaTable(f'{project_location}gold_asset_train')
 train_parquet_files = training_dt.file_uris()
 train_parquet_files = [
@@ -37,6 +43,7 @@ val_rows = val_dt.get_add_actions().to_pandas()["num_records"].sum()
 
 # COMMAND ----------
 
+# DBTITLE 1,Data Module For Pytorch
 object_id_to_class_mapping={"1":"pole","2":"transformer"}
 from petastorm.reader import make_batch_reader
 from petastorm.pytorch import DataLoader
@@ -136,6 +143,7 @@ class UtilityDataModule(pl.LightningDataModule):
 
 # COMMAND ----------
 
+# DBTITLE 1,Get Some Variables Dynamically
 import torch
 from torch import optim, nn, utils, Tensor
 from torchvision import datasets, transforms
@@ -164,6 +172,12 @@ experiment = mlflow.set_experiment(experiment_path)
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC # Main Training Function
+# MAGIC This function will be used to scale from a single gpu to multi node GPU training
+
+# COMMAND ----------
+
 BATCH_SIZE = 16
 MAX_EPOCHS = 1
 READER_POOL_TYPE = "thread"
@@ -172,7 +186,6 @@ from math import ceil
 import os
 
 def main_training_loop(num_tasks, num_proc_per_task, run_id=None):
-  # from MyDataModule import ImageNetDataModule
   import warnings
   warnings.filterwarnings("ignore")
   """
@@ -196,9 +209,6 @@ def main_training_loop(num_tasks, num_proc_per_task, run_id=None):
         ColSpec("binary","data_input")
     ]
   )
-  # output_schema = Schema([
-  #   TensorSpec(np.dtype(np.float32), (1,1,640,640))
-  # ])
   output_schema = Schema([
     ColSpec("string","data_output")
   ])
@@ -210,7 +220,6 @@ def main_training_loop(num_tasks, num_proc_per_task, run_id=None):
   os.environ['DATABRICKS_HOST'] = db_host
   os.environ['DATABRICKS_TOKEN'] = db_token
   
-  # NCCL P2P can cause issues with incorrect peer settings, so let's turn this off to scale for now
   os.environ['NCCL_P2P_DISABLE'] = '1'
   WORLD_SIZE = num_tasks * num_proc_per_task
   node_rank = int(os.environ.get("NODE_RANK",0))
@@ -219,11 +228,7 @@ def main_training_loop(num_tasks, num_proc_per_task, run_id=None):
   val_steps_per_epoch = ceil(val_rows // (BATCH_SIZE * WORLD_SIZE))
   # epochs = 5
   
-  # mlf_logger = pl.loggers.MLFlowLogger(experiment_name=experiment_path, log_model=True)
-  
-  # define any number of nn.Modules (or use your current ones)
  
-  # init the autoencoder
   model = UtilityAssetModel("FPN", "resnet34", in_channels=3, out_classes=6)
  
   datamodule = UtilityDataModule(train_parquet_files=train_parquet_files,
@@ -240,7 +245,6 @@ def main_training_loop(num_tasks, num_proc_per_task, run_id=None):
   else:
     kwargs ={}
   trainer = pl.Trainer(accelerator='gpu',
-                      #  strategy=strategy, 
                        devices=num_proc_per_task, 
                        num_nodes=num_tasks,
                        max_epochs=MAX_EPOCHS,
@@ -290,6 +294,14 @@ def main_training_loop(num_tasks, num_proc_per_task, run_id=None):
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC # Run Training
+# MAGIC This function will work as a distributed framework by using `TorchDistributor`.
+# MAGIC
+# MAGIC Configure how many workers are in the cluster and all other configs should be dynamic
+
+# COMMAND ----------
+
 NUM_WORKERS = 2
 NUM_TASKS = NUM_WORKERS * NUM_GPUS_PER_WORKER
 NUM_PROC_PER_TASK = 1
@@ -298,7 +310,7 @@ NUM_PROC = NUM_TASKS * NUM_PROC_PER_TASK
 from mlflow.types.schema import Schema, ColSpec, TensorSpec
 from mlflow.models.signature import ModelSignature
 
-# mlflow.pytorch.autolog()
+
 input_schema = Schema(
   [
       ColSpec("binary","data_input")
@@ -318,6 +330,12 @@ with mlflow.start_run() as run:
                           signature=signature,
                           )
 
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC # Register Model to UC
+# MAGIC This will register a model in Unity Catalog for inference later
 
 # COMMAND ----------
 

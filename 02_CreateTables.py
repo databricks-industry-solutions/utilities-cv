@@ -7,6 +7,7 @@
 
 # COMMAND ----------
 
+# DBTITLE 1,UDF to create image masks from class labels
 import cv2
 import os
 import numpy as np
@@ -20,8 +21,6 @@ def create_mask_from_polygons(image_bytes, polygons):
     x = np.frombuffer(image_bytes, np.uint8)
     img = cv2.imdecode(x, cv2.IMREAD_GRAYSCALE)
     h, w = img.shape
-    # h = 3888
-    # w = 5184
 
     # Initialize a blank grayscale image of the same dimensions
     mask = np.zeros((h, w), np.uint8)
@@ -41,6 +40,7 @@ def create_mask_from_polygons(image_bytes, polygons):
 
 # COMMAND ----------
 
+# DBTITLE 1,Convert Raw Label Data to Structured Values
 obj_mapping = {
   "insulator": 4,
   "crossarm":3,
@@ -54,7 +54,7 @@ obj_mapping = {
 }
 
 @udf("string")
-def my_conv(objects):
+def transform_labels(objects):
   if objects is None:
     return {}
   obj = json.loads(objects)
@@ -77,6 +77,7 @@ def my_conv(objects):
 
 # COMMAND ----------
 
+# DBTITLE 1,Get the Raw Images and Save to Delta
 
 raw_images = f"{project_location}raw_images/"
 
@@ -86,6 +87,7 @@ raw_df.write.mode("overwrite").saveAsTable(f"{CATALOG}.{SCHEMA}.raw_images_bronz
 
 # COMMAND ----------
 
+# DBTITLE 1,Get the Raw Label Data and Save to Delta
 from pyspark.sql.functions import to_json, from_json
 label_df = (
   spark.read.csv(f"{project_location}label_data", header=True)
@@ -97,21 +99,21 @@ label_df.write.mode('overwrite').saveAsTable(f"{CATALOG}.{SCHEMA}.label_data")
 
 # COMMAND ----------
 
+# DBTITLE 1,Combine Label and Images to Create Mask Dataset
 mask_df = (
   spark.sql(f"""
           select A.file_name,content, to_json(label) as label from {CATALOG}.{SCHEMA}.raw_images_bronze A
           left join {CATALOG}.{SCHEMA}.label_data B using(file_name)
-          """).withColumn("mask_labels",my_conv('label'))
+          """).withColumn("mask_labels",transform_labels('label'))
   .withColumn("mask_binary", create_mask_from_polygons("content", "mask_labels"))
   .drop("content")
 )
-
-# COMMAND ----------
 
 mask_df.write.mode("overwrite").saveAsTable(f"{CATALOG}.{SCHEMA}.silver_mask")
 
 # COMMAND ----------
 
+# DBTITLE 1,Create Training Dataset with Original Images and Masks Combined
 gold_df = (
   spark.sql(f"""
             select mask_binary, content as image_binary, A.file_name
@@ -122,6 +124,7 @@ gold_df.write.mode("overwrite").saveAsTable(f"{CATALOG}.{SCHEMA}.gold_asset_inve
 
 # COMMAND ----------
 
+# DBTITLE 1,Create Test Train Split
 gold_satellite_image =spark.table(f"{CATALOG}.{SCHEMA}.gold_asset_inventory")
 (images_train, images_test) = gold_satellite_image.randomSplit([0.8, 0.2 ], 42)
 images_train.write.mode("overwrite").save(f"{project_location}gold_asset_train")
