@@ -3,6 +3,13 @@
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC # Model Type
+# MAGIC Segmentation models allow us to draw tighter borders around objects in an image compared to object detection. In the transmission area this might be overkill, but when dealing with distrbution lines there are a lot more items more tightly packed onto structures. Segmentation allows us to get tighter crops on objects in order to do further classification with other fine tuned models.
+# MAGIC <img src='https://brysmiwasb.blob.core.windows.net/demos/images/Power_Utilities_AssetID_Semantic_Seg.png' width=###>
+
+# COMMAND ----------
+
 # MAGIC %run ./00-Configuration
 
 # COMMAND ----------
@@ -25,7 +32,8 @@ from petastorm import TransformSpec
 
 # COMMAND ----------
 
-
+# for the train and validation sets we get the parquet file urls for petastorm to use
+# petastorm will help us do distributed training
 training_dt = DeltaTable(f'{project_location}gold_asset_train')
 train_parquet_files = training_dt.file_uris()
 train_parquet_files = [
@@ -43,7 +51,11 @@ val_rows = val_dt.get_add_actions().to_pandas()["num_records"].sum()
 
 # COMMAND ----------
 
-# DBTITLE 1,Data Module For Pytorch
+# MAGIC %md
+# MAGIC ## Data Module For Pytorch
+
+# COMMAND ----------
+
 object_id_to_class_mapping={"1":"pole","2":"transformer"}
 from petastorm.reader import make_batch_reader
 from petastorm.pytorch import DataLoader
@@ -143,7 +155,11 @@ class UtilityDataModule(pl.LightningDataModule):
 
 # COMMAND ----------
 
-# DBTITLE 1,Get Some Variables Dynamically
+# MAGIC %md
+# MAGIC ## Get Infrastructure Variables Dynamically
+
+# COMMAND ----------
+
 import torch
 from torch import optim, nn, utils, Tensor
 from torchvision import datasets, transforms
@@ -158,11 +174,11 @@ import numpy as np
 NUM_GPUS_PER_WORKER = torch.cuda.device_count() # CHANGE AS NEEDED
 USE_GPU = NUM_GPUS_PER_WORKER > 0
  
+# get the user dynamically and set the experiment path for MLFlow
 username = spark.sql("SELECT current_user()").first()['current_user()']
- 
 experiment_path = f'/Users/{username}/pytorch-distributor'
  
-# This is needed for later in the notebook
+# This is needed for later in the notebook when we are doing distrbuted training
 db_host = dbutils.notebook.entry_point.getDbutils().notebook().getContext().extraContext().apply('api_url')
 db_token = dbutils.notebook.entry_point.getDbutils().notebook().getContext().apiToken().get()
  
@@ -175,6 +191,11 @@ experiment = mlflow.set_experiment(experiment_path)
 # MAGIC %md
 # MAGIC # Main Training Function
 # MAGIC This function will be used to scale from a single gpu to multi node GPU training
+# MAGIC
+# MAGIC ## Commoditity GPU's
+# MAGIC Large GPUs may not be readily available all of the time, and smaller GPUs are not always up to the task to train large computer vision models. Being able to distribute GPU training across many smaller nodes allows us to take advantage of the readily available GPU hardware and chain them together.
+# MAGIC
+# MAGIC <img src='https://brysmiwasb.blob.core.windows.net/demos/images/Power_Utilities_AssetID_MultiGPU_Ref.png' width=###>
 
 # COMMAND ----------
 
@@ -228,11 +249,12 @@ def main_training_loop(num_tasks, num_proc_per_task, run_id=None):
   val_steps_per_epoch = ceil(val_rows // (BATCH_SIZE * WORLD_SIZE))
   # epochs = 5
   
- 
+  #setup the model using Feature Pyramid Network architecture, resnet34 encoder, RGB (3 channels), and 6 potential classes
   model = UtilityAssetModel("FPN", "resnet34", in_channels=3, out_classes=6)
  
   datamodule = UtilityDataModule(train_parquet_files=train_parquet_files,
-                                  val_parquet_files=val_parquet_files, batch_size=BATCH_SIZE,
+                                  val_parquet_files=val_parquet_files, 
+                                  batch_size=BATCH_SIZE,
                                   workers_count=1,
                                   reader_pool_type=READER_POOL_TYPE,
                                   device_id=node_rank,
@@ -265,7 +287,11 @@ def main_training_loop(num_tasks, num_proc_per_task, run_id=None):
 
 # COMMAND ----------
 
-# DBTITLE 1,Single Node Training
+# MAGIC %md
+# MAGIC ## Uncomment For Single Node Training
+
+# COMMAND ----------
+
 # NUM_TASKS = 1
 # NUM_PROC_PER_TASK = 1
 # mlflow.pytorch.autolog() 
@@ -298,19 +324,21 @@ def main_training_loop(num_tasks, num_proc_per_task, run_id=None):
 # MAGIC # Run Training
 # MAGIC This function will work as a distributed framework by using `TorchDistributor`.
 # MAGIC
+# MAGIC This is especially important in the age of LLM's where there is a shortage of fire breathing GPU behemoth's. Instead of trying to get our hands on A100's or H100's we can setup many T4 machines that are more readily available and cluster them together to work in concert
+# MAGIC
 # MAGIC Configure how many workers are in the cluster and all other configs should be dynamic
 
 # COMMAND ----------
 
-NUM_WORKERS = 2
+NUM_WORKERS = 2 # how many executor nodes there are in the cluster
 NUM_TASKS = NUM_WORKERS * NUM_GPUS_PER_WORKER
-NUM_PROC_PER_TASK = 1
+NUM_PROC_PER_TASK = 1 # leave this at 1
 NUM_PROC = NUM_TASKS * NUM_PROC_PER_TASK
  
 from mlflow.types.schema import Schema, ColSpec, TensorSpec
 from mlflow.models.signature import ModelSignature
 
-
+# set the schema for our model so we can register it in Unity Catalog
 input_schema = Schema(
   [
       ColSpec("binary","data_input")
@@ -324,6 +352,7 @@ signature = ModelSignature(inputs=input_schema, outputs=output_schema)
 
 with mlflow.start_run() as run:
   run_id= mlflow.active_run().info.run_id
+  # TorchDistributor allows us to easily distribute our taining to multiple nodes in a cluster
   (model, ckpt_path) = TorchDistributor(num_processes=NUM_PROC, local_mode=False, use_gpu=True).run(main_training_loop, NUM_TASKS, NUM_PROC_PER_TASK, run_id) 
   mlflow.pyfunc.log_model(artifact_path="model", 
                           python_model=CVModelWrapper(model),

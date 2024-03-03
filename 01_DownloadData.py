@@ -1,7 +1,21 @@
 # Databricks notebook source
 # MAGIC %md
 # MAGIC # Download instructions
-# MAGIC Go [here](https://forms.office.com/pages/responsepage.aspx?id=AGTMMj0V90K8VXflpQ8bz0Fhowp3sHlPsHuc9DMJSEBURFFQTkNWVFhBVUxZRVU1NVJFU0wxR0taUS4u) and fill out the form to get the root url for downloading the zip files and place it in the root_location
+# MAGIC This dataset is taken from an open epri inspection dataset. Details can be found [here](https://www.kaggle.com/datasets/dexterlewis/epri-distribution-inspection-imagery)
+# MAGIC
+# MAGIC In order to download the dataset you need to agree to their license terms found [here](https://forms.office.com/pages/responsepage.aspx?id=AGTMMj0V90K8VXflpQ8bz0Fhowp3sHlPsHuc9DMJSEBURFFQTkNWVFhBVUxZRVU1NVJFU0wxR0taUS4u) and fill out the form to get the root url for downloading the zip files and place it in the root_location
+# MAGIC
+# MAGIC ### Attribution
+# MAGIC - Dataset: Drone-based Distribution Inspection Imagery 1.0
+# MAGIC - DOI: 10.34740/kaggle/dsv/3803175
+# MAGIC - Creator: EPRI, P. Kulkarni, D. Lewis,
+# MAGIC - License: CC BY-SA 4.0
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Variable Configuration
+# MAGIC Replace the xxxx values in the root_location with the values that you received via email after accepting the license terms
 
 # COMMAND ----------
 
@@ -11,6 +25,11 @@ dbutils.widgets.text("root_location","https://xxxx.blob.core.windows.net/xxxx/")
 # COMMAND ----------
 
 # MAGIC %run ./00-Configuration
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Create Unity Catalog Assets
 
 # COMMAND ----------
 
@@ -39,6 +58,17 @@ spark.sql(f"create volume if not exists {CATALOG}.{SCHEMA}.{VOLUME}")
 
 
 
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Download and Extract
+# MAGIC These next two cells will download zip files from EPRI and unzip them locally to save network IO
 
 # COMMAND ----------
 
@@ -71,8 +101,19 @@ for file in files:
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC ## Copy Unzipped Assets
+# MAGIC Copy the files to the unity catalog volume
+
+# COMMAND ----------
+
 import shutil
 shutil.copytree('/tmp/utility_accelerator/raw_images/',f'{project_location}raw_images/', dirs_exist_ok=True)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Download Label CSV
 
 # COMMAND ----------
 

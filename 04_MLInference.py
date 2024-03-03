@@ -8,7 +8,11 @@
 
 # COMMAND ----------
 
-# DBTITLE 1,Load Model From Unity Catalog
+# MAGIC %md
+# MAGIC ## Load Model From Unity Catalog
+
+# COMMAND ----------
+
 
 import mlflow
 
@@ -27,6 +31,9 @@ loaded_model = mlflow.pyfunc.load_model(logged_model)
 # MAGIC %md
 # MAGIC # Perform Inference
 # MAGIC This does simple inference on a sample image and draws bounding boxes around the assets
+# MAGIC
+# MAGIC ## Sample image
+# MAGIC <img src='https://brysmiwasb.blob.core.windows.net/demos/images/Power_Utilities_AssetID_Semantic_Seg_inference_test.jpg'>
 
 # COMMAND ----------
 
@@ -34,8 +41,12 @@ import json
 from PIL import Image 
 import pandas as pd
 import io
+import requests
 
-image = Image.open('./images/10.jpg').resize((640,640))
+url = 'https://brysmiwasb.blob.core.windows.net/demos/images/Power_Utilities_AssetID_Semantic_Seg_inference_test.jpg'
+response = requests.get(url)
+
+image = Image.open(io.BytesIO(response.content)).resize((640,640))
 
 output = io.BytesIO()
 image.save(output, format='JPEG')
