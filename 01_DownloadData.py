@@ -33,6 +33,10 @@ dbutils.widgets.text("root_location","https://xxxx.blob.core.windows.net/xxxx/")
 
 # COMMAND ----------
 
+# MAGIC %sql show catalogs like 'mfg_utilities_accelerator'
+
+# COMMAND ----------
+
 import urllib.request
 import os, shutil
 import json
@@ -44,7 +48,9 @@ import requests
 
 download_location = dbutils.widgets.get("root_location")
 
-spark.sql(f"create catalog if not exists {CATALOG}")
+exists_count = spark.sql(f"show catalogs like '{CATALOG}'").count()
+if exists_count ==0:
+  spark.sql(f"create catalog if not exists {CATALOG}")
 spark.sql(f"create schema if not exists {CATALOG}.{SCHEMA}")
 if dbutils.widgets.get("reset_all") == 'True':
   if spark.sql(f"show volumes from {CATALOG}.{SCHEMA}").where(f"volume_name='{VOLUME}'").count() >0:

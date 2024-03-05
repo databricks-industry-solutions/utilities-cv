@@ -61,7 +61,7 @@ job_json = {
                     "notebook_path": f"01_DownloadData",
                     "base_parameters": {
                         "root_location": root_location,
-                        "reset_all": "False"
+                        "reset_all": "True"
                     },
                 },
                 "task_key": "01_DownloadData"
