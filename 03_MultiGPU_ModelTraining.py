@@ -200,7 +200,7 @@ experiment = mlflow.set_experiment(experiment_path)
 # COMMAND ----------
 
 BATCH_SIZE = 16
-MAX_EPOCHS = 1
+MAX_EPOCHS = 1 #Make larger for better results
 READER_POOL_TYPE = "thread"
 RESULTS_QUEUE_SIZE = 20
 from math import ceil

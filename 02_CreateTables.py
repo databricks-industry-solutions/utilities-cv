@@ -131,7 +131,11 @@ label_df.write.mode('overwrite').saveAsTable(f"{CATALOG}.{SCHEMA}.label_data") #
 
 # COMMAND ----------
 
-# DBTITLE 1,Combine Label and Images to Create Mask Dataset
+# MAGIC %md
+# MAGIC # Combine Label and Images to Create Mask Dataset
+
+# COMMAND ----------
+
 # read the raw images and join to the labels
 mask_df = (
   spark.sql(f"""
@@ -146,7 +150,11 @@ mask_df.write.mode("overwrite").saveAsTable(f"{CATALOG}.{SCHEMA}.silver_mask") #
 
 # COMMAND ----------
 
-# DBTITLE 1,Create Training Dataset with Original Images and Masks Combined
+# MAGIC %md
+# MAGIC # Create Training Dataset with Original Images and Masks Combined
+
+# COMMAND ----------
+
 # Join the masks and raw images together and save to a single gold table.
 # This will be helpful to not have to join these multiple times in the future if we try different models
 gold_df = (
@@ -159,7 +167,11 @@ gold_df.write.mode("overwrite").saveAsTable(f"{CATALOG}.{SCHEMA}.gold_asset_inve
 
 # COMMAND ----------
 
-# DBTITLE 1,Create Test Train Split
+# MAGIC %md
+# MAGIC # Create Test Train Split
+
+# COMMAND ----------
+
 # Create a test/train split and save these to a volume so the petastorm can easily pick them up
 gold_satellite_image =spark.table(f"{CATALOG}.{SCHEMA}.gold_asset_inventory")
 (images_train, images_test) = gold_satellite_image.randomSplit([0.8, 0.2 ], 42)
