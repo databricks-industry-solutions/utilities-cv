@@ -1,9 +1,7 @@
 # Databricks notebook source
 # MAGIC %md
 # MAGIC # Creating Tables
-# MAGIC To prepare for training we are going to generate masks from our label data and combine that with our raw images to create a mask and image pair. This will be the foundation that will be fed into our pytorch model in the next notebook
-# MAGIC
-# MAGIC We will be utilizing bytes stored directly in delta tables so that we can pack more records into a file and not be as bound to IO if we were to keep each image in it's raw form on blob storage
+# MAGIC To prepare for training we are going to turn our labels into something called masks. A mask is meant to identify each pixel in an image as just background that we are not interested in or label that pixel as a certain asset class. The mask and image will be two columns in a delta table where each column is stored as raw bytes. We will be utilizing bytes stored directly in delta tables so that we can pack more records into a file and not be as IO bound. Using each raw image as an individual object in cloud storage would cause an unnesceeary amount of overhead making a cloud storage call for each invidual image.
 # MAGIC
 # MAGIC ![here](https://brysmiwasb.blob.core.windows.net/demos/images/Power_Utilities_AssetID_Table_Creation.png)
 
@@ -19,6 +17,7 @@
 
 # MAGIC %md
 # MAGIC ## UDF to create image masks from class labels
+# MAGIC In order to create a mask the labels for that image need to be drawn onto a blank canvas that is the same size as the original image. Each pixel will either get a background label (0) or a class label that can be any number assigned to a class. For example an insulator could be class number 4. The important thing is that classes need to be numbers for our machine learning model to understand
 
 # COMMAND ----------
 
@@ -30,16 +29,17 @@ from pyspark.sql.functions import udf, from_json
 
 @udf('binary')
 def create_mask_from_polygons(image_bytes, polygons):
-    polygons = json.loads(polygons)
+    polygons = json.loads(polygons) # load our json labels into a python dictionary
     # Read the original image to get its dimensions
-    x = np.frombuffer(image_bytes, np.uint8)
-    img = cv2.imdecode(x, cv2.IMREAD_GRAYSCALE)
-    h, w = img.shape
+    x = np.frombuffer(image_bytes, np.uint8) # get the bytes of the image passed into the user defined function
+    img = cv2.imdecode(x, cv2.IMREAD_GRAYSCALE) # create an open cv image out of the numpy array
+    h, w = img.shape # get the height and width of the image
 
     # Initialize a blank grayscale image of the same dimensions
+    # So we can start to color it in with our different classes
     mask = np.zeros((h, w), np.uint8)
     
-    # Draw polygons
+    # Draw masks for each object in the image
     for class_id, class_polygons in polygons.items():
         for polygon in class_polygons:
             cv2.fillPoly(mask, [np.array(polygon, np.int32)], color=int(class_id))
@@ -47,7 +47,7 @@ def create_mask_from_polygons(image_bytes, polygons):
     # Return the mask to be saved in delta
     _, encoded_img = cv2.imencode('.png', mask)
     masked_byte_array = encoded_img.tobytes()
-    return masked_byte_array
+    return masked_byte_array # going to be stored as bytes
 
 
 
@@ -56,10 +56,11 @@ def create_mask_from_polygons(image_bytes, polygons):
 
 # MAGIC %md
 # MAGIC ## Convert Raw Label Data to Structured Values
+# MAGIC The json values are a little difficult to work with so we are going to transform them to have more structure and map them from their human readable class to a computer model version
 
 # COMMAND ----------
 
-# This dict will map the original class names to numeric for pytorch to consume
+# This dict will map the original class names to numeric for our computer vision model to consume
 obj_mapping = {
   "insulator": 4,
   "crossarm":3,
@@ -98,6 +99,7 @@ def transform_labels(objects):
 
 # MAGIC %md
 # MAGIC ## Get the Raw Images and Save to Delta
+# MAGIC The first real work happens in this cell where we read from the volume where all of our images are located and save them as a delta table. This allows us to do transformations faster downstream of this
 
 # COMMAND ----------
 
@@ -116,6 +118,7 @@ raw_df.write.mode("overwrite").saveAsTable(f"{CATALOG}.{SCHEMA}.raw_images_bronz
 
 # MAGIC %md
 # MAGIC ## Get the Raw Label Data and Save to Delta
+# MAGIC The label data is the other starting table. We read in the csv file and apply some json structure to the label column in the csv
 
 # COMMAND ----------
 
@@ -124,7 +127,7 @@ from pyspark.sql.functions import to_json, from_json
 label_df = (
   spark.read.csv(f"{project_location}label_data", header=True)
   .withColumnRenamed("External ID","file_name")
-  .withColumn("Label",from_json("Label","objects array<struct<value:string, line:array<struct<x:float,y:float>>,polygon:array<struct<x:float,y:float>>>>"))
+  .withColumn("Label",from_json("Label","objects array<struct<value:string, line:array<struct<x:float,y:float>>,polygon:array<struct<x:float,y:float>>>>")) #schema to grab the fields we want. There are objects and lines
   .selectExpr("Label","replace(file_name, ' ') as file_name")
 )
 label_df.write.mode('overwrite').saveAsTable(f"{CATALOG}.{SCHEMA}.label_data") # write out the labels to a delta table
@@ -133,6 +136,7 @@ label_df.write.mode('overwrite').saveAsTable(f"{CATALOG}.{SCHEMA}.label_data") #
 
 # MAGIC %md
 # MAGIC # Combine Label and Images to Create Mask Dataset
+# MAGIC Join the image bytes to the label datset so that we can pass each value to the masking function that was built earlier. This will be saved to a new table for further processing
 
 # COMMAND ----------
 
@@ -152,11 +156,11 @@ mask_df.write.mode("overwrite").saveAsTable(f"{CATALOG}.{SCHEMA}.silver_mask") #
 
 # MAGIC %md
 # MAGIC # Create Training Dataset with Original Images and Masks Combined
+# MAGIC Joining the original image from the first image table to the masks gives us the final gold level dataset that can be used for training our computer vision model. This will be helpful to not have to join these multiple times in the future if we try different models
 
 # COMMAND ----------
 
 # Join the masks and raw images together and save to a single gold table.
-# This will be helpful to not have to join these multiple times in the future if we try different models
 gold_df = (
   spark.sql(f"""
             select mask_binary, content as image_binary, A.file_name
@@ -169,12 +173,13 @@ gold_df.write.mode("overwrite").saveAsTable(f"{CATALOG}.{SCHEMA}.gold_asset_inve
 
 # MAGIC %md
 # MAGIC # Create Test Train Split
+# MAGIC The final step of our data preparation is going to be splitting the gold dataset up into training and validation data. This will allow our model to train on the majority of the data, but allow it to check in on how it's learning by using the test set
 
 # COMMAND ----------
 
 # Create a test/train split and save these to a volume so the petastorm can easily pick them up
 gold_satellite_image =spark.table(f"{CATALOG}.{SCHEMA}.gold_asset_inventory")
-(images_train, images_test) = gold_satellite_image.randomSplit([0.8, 0.2 ], 42)
+(images_train, images_test) = gold_satellite_image.randomSplit([0.8, 0.2 ], 42) # randomly split the dataset into 80% training and 20% test
 images_train.write.mode("overwrite").save(f"{project_location}gold_asset_train")
 images_test.write.mode("overwrite").save(f"{project_location}gold_asset_test")
 
