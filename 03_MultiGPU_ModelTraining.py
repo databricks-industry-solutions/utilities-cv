@@ -1,4 +1,10 @@
 # Databricks notebook source
+# MAGIC %md
+# MAGIC # Model Training
+# MAGIC In this notebook we will use [Pytorch Lightning](https://lightning.ai/docs/pytorch/stable/) framework (a wrapper for [Pytorch](https://pytorch.org/))to train a segmentation model that will learn how to identify assets in our drone imagery. We will start by defining a data loader that will tell Pytorch how to read the data and convert it into something readable for it to learn with. We will cover some tricks further down that will help us use more than one computer and GPU to train our model with in order to iterate quickly. After training completes we will use Unity Catalog to register our model so that it can be governed.
+
+# COMMAND ----------
+
 # MAGIC %pip install pytorch-lightning==1.5.4 opencv-python==4.8.0.74 segmentation-models-pytorch deltalake
 
 # COMMAND ----------
@@ -6,11 +12,12 @@
 # MAGIC %md
 # MAGIC # Model Type
 # MAGIC Segmentation models allow us to draw tighter borders around objects in an image compared to object detection. In the transmission area this might be overkill, but when dealing with distrbution lines there are a lot more items more tightly packed onto structures. Segmentation allows us to get tighter crops on objects in order to do further classification with other fine tuned models.
+# MAGIC
 # MAGIC <img src='https://brysmiwasb.blob.core.windows.net/demos/images/Power_Utilities_AssetID_Semantic_Seg.png' width=###>
 
 # COMMAND ----------
 
-# MAGIC %run ./00-Configuration
+# MAGIC %run ./00_Intro_and_Config
 
 # COMMAND ----------
 
@@ -28,19 +35,19 @@ from petastorm import TransformSpec
 
 # MAGIC %md
 # MAGIC # Get Delta Files
-# MAGIC We need to get a list of delta files to pass to petastorm for more efficient distributed training.
+# MAGIC This command will set us up to be able to use [Petastorm](https://petastorm.readthedocs.io/en/latest/index.html) which is a way to distribute data reads for libraries like Pytorch. We need to get a list of the different parquet files for training and test that Petastorm will get as lists to be able to load into memory
 
 # COMMAND ----------
 
 # for the train and validation sets we get the parquet file urls for petastorm to use
 # petastorm will help us do distributed training
-training_dt = DeltaTable(f'{project_location}gold_asset_train')
-train_parquet_files = training_dt.file_uris()
+training_dt = DeltaTable(f'{project_location}gold_asset_train') # get our gold delta table
+train_parquet_files = training_dt.file_uris() # get the list of parquet files in the delta table
 train_parquet_files = [
-    parquet_file.replace("/Volumes", "file:///Volumes")
+    parquet_file.replace("/Volumes", "file:///Volumes") # transform the file name to be compatible with Petastorm
     for parquet_file in train_parquet_files
 ]
-train_rows = training_dt.get_add_actions().to_pandas()["num_records"].sum()
+train_rows = training_dt.get_add_actions().to_pandas()["num_records"].sum() # count the number of records for determining training batch sizes
 
 val_dt = DeltaTable(f"{project_location}gold_asset_test")
 val_parquet_files = val_dt.file_uris()
@@ -53,6 +60,7 @@ val_rows = val_dt.get_add_actions().to_pandas()["num_records"].sum()
 
 # MAGIC %md
 # MAGIC ## Data Module For Pytorch
+# MAGIC The [DataModule](https://lightning.ai/docs/pytorch/stable/data/datamodule.html) is a framework to tell Pytorch Lightning how to read our data. This is customizable so we can place our Petastorm reader code in here and also transform the image and mask bytes into [tensors](https://pytorch.org/tutorials/beginner/introyt/tensors_deeper_tutorial.html) which are the bedrock that Pytorch is built on.
 
 # COMMAND ----------
 
@@ -157,6 +165,7 @@ class UtilityDataModule(pl.LightningDataModule):
 
 # MAGIC %md
 # MAGIC ## Get Infrastructure Variables Dynamically
+# MAGIC In order to distribute to more than a single machine we need to understand what the hardware looks like. We need to know how many gpu's are on each computer (this accelerator defaults to one small gpu per computer and 2 computers). Additionally we will get the user name dynamically and an authentication token so that each computer will have [MLFlow](https://www.databricks.com/product/managed-mlflow) configurations
 
 # COMMAND ----------
 
@@ -190,7 +199,7 @@ experiment = mlflow.set_experiment(experiment_path)
 
 # MAGIC %md
 # MAGIC # Main Training Function
-# MAGIC This function will be used to scale from a single gpu to multi node GPU training
+# MAGIC This function will be used to scale from a single gpu to multi node GPU training by utilizing the [Torch Distributor](https://docs.databricks.com/en/machine-learning/train-model/distributed-training/spark-pytorch-distributor.html)
 # MAGIC
 # MAGIC ## Commoditity GPU's
 # MAGIC Large GPUs may not be readily available all of the time, and smaller GPUs are not always up to the task to train large computer vision models. Being able to distribute GPU training across many smaller nodes allows us to take advantage of the readily available GPU hardware and chain them together.
@@ -245,6 +254,8 @@ def main_training_loop(num_tasks, num_proc_per_task, run_id=None):
   WORLD_SIZE = num_tasks * num_proc_per_task
   node_rank = int(os.environ.get("NODE_RANK",0))
   
+  # How many steps to we take for each training round 
+  based on how many records are in training and test datasets
   train_steps_per_epoch = ceil(train_rows // (BATCH_SIZE * WORLD_SIZE))
   val_steps_per_epoch = ceil(val_rows // (BATCH_SIZE * WORLD_SIZE))
   # epochs = 5
@@ -252,6 +263,8 @@ def main_training_loop(num_tasks, num_proc_per_task, run_id=None):
   #setup the model using Feature Pyramid Network architecture, resnet34 encoder, RGB (3 channels), and 6 potential classes
   model = UtilityAssetModel("FPN", "resnet34", in_channels=3, out_classes=6)
  
+ # Instantiate the Data Module that will tell Pytorch how to load the data. 
+#  We are passing in the list of parquet files that were extracted earlier from the Delta Tables
   datamodule = UtilityDataModule(train_parquet_files=train_parquet_files,
                                   val_parquet_files=val_parquet_files, 
                                   batch_size=BATCH_SIZE,
@@ -282,13 +295,14 @@ def main_training_loop(num_tasks, num_proc_per_task, run_id=None):
   if run_id is not None:
     mlflow.start_run(run_id=run_id)
   trainer.fit(model=model, datamodule=datamodule)
-  delattr(model,"trainer")
-  return model, trainer.checkpoint_callback.best_model_path
+  delattr(model,"trainer") # This allows the model to be pickled
+  return model, trainer.checkpoint_callback.best_model_path # send back the model and the best model weight location
 
 # COMMAND ----------
 
 # MAGIC %md
 # MAGIC ## Uncomment For Single Node Training
+# MAGIC This is some reference code that shows how to utilize the same function to also do single node and single GPU training. Feel free to uncomment and explore
 
 # COMMAND ----------
 
@@ -338,7 +352,7 @@ NUM_PROC = NUM_TASKS * NUM_PROC_PER_TASK
 from mlflow.types.schema import Schema, ColSpec, TensorSpec
 from mlflow.models.signature import ModelSignature
 
-# set the schema for our model so we can register it in Unity Catalog
+# set the schema for our model so we can register it in Unity Catalogso
 input_schema = Schema(
   [
       ColSpec("binary","data_input")
@@ -350,10 +364,13 @@ output_schema = Schema([
 ])
 signature = ModelSignature(inputs=input_schema, outputs=output_schema)
 
+# Start an MLFlow run to automatically track our experiment
 with mlflow.start_run() as run:
   run_id= mlflow.active_run().info.run_id
   # TorchDistributor allows us to easily distribute our taining to multiple nodes in a cluster
   (model, ckpt_path) = TorchDistributor(num_processes=NUM_PROC, local_mode=False, use_gpu=True).run(main_training_loop, NUM_TASKS, NUM_PROC_PER_TASK, run_id) 
+  
+  # Log the artifact to MLFlow with a signature that tells consumers what to pass in to the model and what to expect as output
   mlflow.pyfunc.log_model(artifact_path="model", 
                           python_model=CVModelWrapper(model),
                           signature=signature,
@@ -364,7 +381,7 @@ with mlflow.start_run() as run:
 
 # MAGIC %md
 # MAGIC # Register Model to UC
-# MAGIC This will register a model in Unity Catalog for inference later
+# MAGIC This will register a model in Unity Catalog so that it can be centrally governed, managed, and exposed for consumption. Unity catalog governs tables, unstructured data, functions, and models all in one place. Details about model registry on Unity Catalog can be found [here](https://docs.databricks.com/en/machine-learning/manage-model-lifecycle/index.html)
 
 # COMMAND ----------
 
@@ -373,11 +390,12 @@ from mlflow import MlflowClient
 
 
 model_name = "utility_asset_accelerator"
-mlflow.set_registry_uri("databricks-uc")
+mlflow.set_registry_uri("databricks-uc") # set the registry to Unity Catalog
 
-_register = mlflow.register_model(f"runs:/{run_id}/model", f"{CATALOG}.{SCHEMA}.{model_name}")
+_register = mlflow.register_model(f"runs:/{run_id}/model", f"{CATALOG}.{SCHEMA}.{model_name}") # Register the model to our schema
 
 client = MlflowClient()
+# Tagging the model allows consumers to always point to a single tag and allows us to do blue/green deployments
 client.set_registered_model_alias(f"{CATALOG}.{SCHEMA}.{model_name}","Production", int(_register.version))
 
 

@@ -11,7 +11,7 @@
 
 # COMMAND ----------
 
-# MAGIC %run ./00-Configuration
+# MAGIC %run ./00_Intro_and_Config
 
 # COMMAND ----------
 
