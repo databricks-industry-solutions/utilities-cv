@@ -5,10 +5,6 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install pytorch-lightning==1.5.4 opencv-python==4.8.0.74 segmentation-models-pytorch deltalake
-
-# COMMAND ----------
-
 # MAGIC %md
 # MAGIC # Model Type
 # MAGIC Segmentation models allow us to draw tighter borders around objects in an image compared to object detection. In the transmission area this might be overkill, but when dealing with distrbution lines there are a lot more items more tightly packed onto structures. Segmentation allows us to get tighter crops on objects in order to do further classification with other fine tuned models.

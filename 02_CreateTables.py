@@ -7,10 +7,6 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install opencv-python==4.8.0.74
-
-# COMMAND ----------
-
 # MAGIC %run ./00_Intro_and_Config
 
 # COMMAND ----------

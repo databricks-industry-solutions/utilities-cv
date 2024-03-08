@@ -17,6 +17,11 @@
 
 # COMMAND ----------
 
+# MAGIC %pip install pytorch-lightning==1.5.4 opencv-python==4.8.0.74 segmentation-models-pytorch shapely
+# MAGIC
+
+# COMMAND ----------
+
 IMAGE_RESIZE=640
 IMAGE_SIZE=640
 NUM_EPOCHS=5

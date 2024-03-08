@@ -5,11 +5,6 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install pytorch-lightning==1.5.4 opencv-python==4.8.0.74 segmentation-models-pytorch shapely
-# MAGIC
-
-# COMMAND ----------
-
 # MAGIC %run ./00_Intro_and_Config
 
 # COMMAND ----------
