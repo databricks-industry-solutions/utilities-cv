@@ -1,4 +1,10 @@
 # Databricks notebook source
+# MAGIC %md
+# MAGIC # Inference
+# MAGIC Model inference involves using the the model that has learned how to find the distribution assets in an image to feed in new images for detection of these assets. The model is stored in Unity Catalog right next to the data and can be applied as data is loaded into the system.
+
+# COMMAND ----------
+
 # MAGIC %pip install pytorch-lightning==1.5.4 opencv-python==4.8.0.74 segmentation-models-pytorch shapely
 # MAGIC
 
@@ -17,23 +23,29 @@
 import mlflow
 
 
-mlflow.set_registry_uri("databricks-uc")
+mlflow.set_registry_uri("databricks-uc") # set the model registry to Unity Catalog
 model_name = "utility_asset_accelerator"
 logged_model = f'models:/{CATALOG}.{SCHEMA}.{model_name}@Production'
 
 # Load model as a PyFuncModel.
-loaded_model = mlflow.pyfunc.load_model(logged_model)
+loaded_model = mlflow.pyfunc.load_model(logged_model) 
 
 
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC # Perform Inference
-# MAGIC This does simple inference on a sample image and draws bounding boxes around the assets
+# MAGIC # Sample image
 # MAGIC
-# MAGIC ## Sample image
+# MAGIC This is a sample image that does not exist in the original dataset that we will use for testing our inference
+# MAGIC
 # MAGIC <img src='https://brysmiwasb.blob.core.windows.net/demos/images/Power_Utilities_AssetID_Semantic_Seg_inference_test.jpg'>
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC # Perform Inference
+# MAGIC This does simple inference on a sample image and draws bounding boxes around the assets. The image is loaded from a url into a PIL image, ran through the trained model and then has labels drawn on it.
 
 # COMMAND ----------
 
@@ -48,76 +60,20 @@ from dbruntime.patches import cv2_imshow
 import numpy as np
 
 url = 'https://brysmiwasb.blob.core.windows.net/demos/images/Power_Utilities_AssetID_Semantic_Seg_inference_test.jpg'
-response = requests.get(url)
+response = requests.get(url) # use python requests to get the image data
 
-image = Image.open(io.BytesIO(response.content)).resize((640,640))
+image = Image.open(io.BytesIO(response.content)).resize((640,640)) # convert the image data into PIL format and resize it so our model understands it
 
-output = io.BytesIO()
+output = io.BytesIO() # convert back into bytes for the model to understand
 image.save(output, format='JPEG')
 df = pd.DataFrame([{"data_input":output.getvalue()}])
-_labels = json.loads(loaded_model.predict(df)[0])
-image = np.array(image)
+_labels = json.loads(loaded_model.predict(df)[0]) # send the image bytes through the model to get predictions
+image = np.array(image) # convert the image into numpyarray so opencv can draw the labels onto it
 
-color_map = {
-  '1': "blue",
-  '2':"green",
-  '3':"red",
-  '4':'purple',
-  '5':'pink',
-}
 
-obj_mapping = {
-  '4':"insulator",
-  '3':"crossarm",
-  '5':"conductor",
-  '1':"pole",
-  '2':"transformers",
-  '0':"background_structure"
-}
-
-def draw_text(img, text,
-          font=cv2.FONT_HERSHEY_PLAIN,
-          pos=(0, 0),
-          font_scale=3,
-          font_thickness=2,
-          text_color=(0, 255, 0),
-          text_color_bg=(0, 0, 0)
-          ):
-
-    x, y = pos
-    text_size, _ = cv2.getTextSize(text, font, font_scale, font_thickness)
-    text_w, text_h = text_size
-    cv2.rectangle(img, pos, (x + text_w, y + text_h), text_color_bg, -1)
-    cv2.putText(img, text, (x, y + text_h + font_scale - 1), font, font_scale, text_color, font_thickness)
-
-    return text_size
-  
-def convert_hex_to_rgb(hex_string):
-    rgb = colors.hex2color(hex_string)
-    rgb_conv = tuple([int(255*x) for x in rgb])
-    bgr_cv = rgb_conv[2], rgb_conv[1],rgb_conv[0]
-    return bgr_cv
-  
-def draw_labels(img, json_data):
-  for class_num in json_data.keys():
-    label = obj_mapping[class_num]
-    for o in json_data[class_num]:
-      boundary = o
-      color = color_map[class_num]
-      # confidence = int(seg['confidence'] * 100)
-      color_rgb = convert_hex_to_rgb(colors.to_hex(color))
-      cv2.rectangle(img, boundary[:2],  boundary[2:], color_rgb,2)
-      draw_text(img, f"{label}", font_scale=2, pos=boundary[:2],text_color=(255,255,255), text_color_bg= color_rgb)
 
 from PIL import ImageDraw
-print(_labels)
 draw_labels(image, _labels)
-# draw = ImageDraw.Draw(image)
-# for k in _labels.keys():
-#   for x in _labels[k]:
-#     color = color_map[k]
-#     draw.rectangle(x, outline=color, width=3)
-# image
 cv2_imshow(image)
 
 # COMMAND ----------
@@ -129,8 +85,16 @@ cv2_imshow(image)
 
 # COMMAND ----------
 
+# get the trained model as a spark user defined function instead so that we can apply it to a spark dataframe
 spark_model = mlflow.pyfunc.spark_udf(spark, model_uri=logged_model, result_type='string')
-display(spark.table(f"{CATALOG}.{SCHEMA}.gold_asset_inventory").select("image_binary").limit(5).withColumn("labels",spark_model("image_binary")))
+
+#feed the image data from the gold table through the model and display the labels for each image
+display(spark.table(
+  f"{CATALOG}.{SCHEMA}.gold_asset_inventory")
+  .select("image_binary")
+  .limit(5)
+  .withColumn("labels",spark_model("image_binary"))
+)
 
 # COMMAND ----------
 
@@ -142,7 +106,7 @@ display(spark.table(f"{CATALOG}.{SCHEMA}.gold_asset_inventory").select("image_bi
 
 (
   spark.table(f"{CATALOG}.{SCHEMA}.gold_asset_inventory")
- .select("image_binary").limit(5)
+ .select("image_binary")
  .withColumn("labels",spark_model("image_binary"))
  .write.mode("overwrite").saveAsTable(f"{CATALOG}.{SCHEMA}.gold_asset_inventory_predictions")
  )

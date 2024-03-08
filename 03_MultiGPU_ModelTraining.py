@@ -21,10 +21,6 @@
 
 # COMMAND ----------
 
-# MAGIC %run ./_resources/03-DL-helpers
-
-# COMMAND ----------
-
 import mlflow
 import torch
 from deltalake import DeltaTable
@@ -276,7 +272,7 @@ def main_training_loop(num_tasks, num_proc_per_task, run_id=None):
   
   # train the model
   if num_tasks >1:
-    kwargs = {"strategy":"ddp"}
+    kwargs = {"strategy":"ddp"} # if training on more than one gpu then we need to turn on distributed processing for pytorch
   else:
     kwargs ={}
   trainer = pl.Trainer(accelerator='gpu',
@@ -381,7 +377,9 @@ with mlflow.start_run() as run:
 
 # MAGIC %md
 # MAGIC # Register Model to UC
-# MAGIC This will register a model in Unity Catalog so that it can be centrally governed, managed, and exposed for consumption. Unity catalog governs tables, unstructured data, functions, and models all in one place. Details about model registry on Unity Catalog can be found [here](https://docs.databricks.com/en/machine-learning/manage-model-lifecycle/index.html)
+# MAGIC This will register a model in Unity Catalog so that it can be centrally governed, managed, and exposed for consumption. Unity catalog governs tables, unstructured data, functions, and models all in one place. 
+# MAGIC
+# MAGIC Details about model registry on Unity Catalog can be found [here](https://docs.databricks.com/en/machine-learning/manage-model-lifecycle/index.html)
 
 # COMMAND ----------
 

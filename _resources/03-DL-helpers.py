@@ -218,3 +218,55 @@ class CVModelWrapper(mlflow.pyfunc.PythonModel):
     return pd.Series(outputs)
 
 
+
+# COMMAND ----------
+
+color_map = {
+  '1': "blue",
+  '2':"green",
+  '3':"red",
+  '4':'purple',
+  '5':'pink',
+}
+
+obj_mapping = {
+  '4':"insulator",
+  '3':"crossarm",
+  '5':"conductor",
+  '1':"pole",
+  '2':"transformers",
+  '0':"background_structure"
+}
+
+def draw_text(img, text,
+          font=cv2.FONT_HERSHEY_PLAIN,
+          pos=(0, 0),
+          font_scale=3,
+          font_thickness=2,
+          text_color=(0, 255, 0),
+          text_color_bg=(0, 0, 0)
+          ):
+
+    x, y = pos
+    text_size, _ = cv2.getTextSize(text, font, font_scale, font_thickness)
+    text_w, text_h = text_size
+    cv2.rectangle(img, pos, (x + text_w, y + text_h), text_color_bg, -1)
+    cv2.putText(img, text, (x, y + text_h + font_scale - 1), font, font_scale, text_color, font_thickness)
+
+    return text_size
+  
+def convert_hex_to_rgb(hex_string):
+    rgb = colors.hex2color(hex_string)
+    rgb_conv = tuple([int(255*x) for x in rgb])
+    bgr_cv = rgb_conv[2], rgb_conv[1],rgb_conv[0]
+    return bgr_cv
+  
+def draw_labels(img, json_data):
+  for class_num in json_data.keys():
+    label = obj_mapping[class_num]
+    for o in json_data[class_num]:
+      boundary = o
+      color = color_map[class_num]
+      color_rgb = convert_hex_to_rgb(colors.to_hex(color))
+      cv2.rectangle(img, boundary[:2],  boundary[2:], color_rgb,2)
+      draw_text(img, f"{label}", font_scale=2, pos=boundary[:2],text_color=(255,255,255), text_color_bg= color_rgb)

@@ -30,3 +30,7 @@ project_location = f'/Volumes/{CATALOG}/{SCHEMA}/{VOLUME}/'
 files = [
   'Circuit3.zip',
 ]
+
+# COMMAND ----------
+
+# MAGIC %run ./_resources/03-DL-helpers
