@@ -162,6 +162,7 @@ from scipy.ndimage import label
 import json
 import io
 import numpy as np
+import cv2
 
 class CVModelWrapper(mlflow.pyfunc.PythonModel):
   def __init__(self, model):
