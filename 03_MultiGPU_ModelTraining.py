@@ -255,7 +255,7 @@ def main_training_loop(num_tasks, num_proc_per_task, run_id=None):
   node_rank = int(os.environ.get("NODE_RANK",0))
   
   # How many steps to we take for each training round 
-  based on how many records are in training and test datasets
+  # based on how many records are in training and test datasets
   train_steps_per_epoch = ceil(train_rows // (BATCH_SIZE * WORLD_SIZE))
   val_steps_per_epoch = ceil(val_rows // (BATCH_SIZE * WORLD_SIZE))
   # epochs = 5
