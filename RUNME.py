@@ -107,7 +107,7 @@ job_json = {
             {
                 "job_cluster_key": "mfg_data_loader",
                 "new_cluster": {
-                    "spark_version": "13.3.x-ml-scala2.12",
+                    "spark_version": "13.3.x-cpu-ml-scala2.12",
                 "spark_conf": {
                     "spark.master": "local[*, 4]",
                     "spark.databricks.delta.preview.enabled": "true"
