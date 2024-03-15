@@ -3,27 +3,32 @@
 [![CLOUD](https://img.shields.io/badge/CLOUD-ALL-blue?logo=googlecloud&style=for-the-badge)](https://cloud.google.com/databricks)
 [![POC](https://img.shields.io/badge/POC-10_days-green?style=for-the-badge)](https://databricks.com/try-databricks)
 
-## Business Problem
-<List of the business use case the solution accelerator address>
+%md
+# Analyzing Electrical Grid Assets Using Computer Vision
 
-## Scope
-<How we expect the user to use this content>
+Utilities can have millions of individual distribution assets in circulation to help keep their grid operation smoothly. Many times these assets are out of sync with their digital versions on systems like GIS, or they deteriorate over time and become damaged. Drones have become the defacto way to take imagery of these assets, but it is a daunting task to manually review this imagery to correct GIS or identify assets that need repaired or replaced. These activities need to be automated through a subfield of machine learning called computer vision. This involved teaching a machine how to look at images and be able to identify items in that image.
 
-___
-<john.doe@databricks.com>
+In this accelerator we will explore how to use Databricks for computer vision use cases that involve drone imagery and power distribution assets. This framework can easily be substitued with transmission assets, or solar generation assets. Addtionally we can extend this accelerator by cropping identified assets in order to apply other fine tuned models for things like damage detection.
 
-___
+## Notebook Outline
+**01_DownloadData** will create some [UnityCatalog](https://www.databricks.com/product/unity-catalog) assets for us to download and store the images and labels needed to train our computer vision model
 
+**02_CreateTables** will manipulate our downloaded data so that labels will be applied to images for teaching the computer how to identify these assets
 
-IMAGE TO REFERENCE ARCHITECTURE
+**03_MultiGPU_ModelTraining** will utilize our table data to train our model through multiple rounds of training and testing. This will be done on more than one machine to make it faster
 
-___
+**04_MLInference** will take the model trained in the previous notebook and look at a never before seen drone image to see if it can identify the assets properly
+%md
 
-&copy; 2022 Databricks, Inc. All rights reserved. The source in this notebook is provided subject to the Databricks License [https://databricks.com/db-license-source].  All included or referenced third party libraries are subject to the licenses set forth below.
+&copy; 2024 Databricks, Inc. All rights reserved. The source in this notebook is provided subject to the [Databricks License](https://databricks.com/db-license-source).  All included or referenced third party libraries are subject to the licenses set forth below.
+</p>
 
 | library                                | description             | license    | source                                              |
 |----------------------------------------|-------------------------|------------|-----------------------------------------------------|
-| PyYAML                                 | Reading Yaml files      | MIT        | https://github.com/yaml/pyyaml                      |
+| pytorch-lightning  | lightweight PyTorch wrapper for ML researchers | Apache Software License (Apache-2.0)   | https://pypi.org/project/pytorch-lightning/   |
+| opencv-python  | Wrapper package for OpenCV python bindings| Apache Software License (Apache 2.0)   | https://pypi.org/project/opencv-python/   |
+| segmentation-models-pytorch  | Image segmentation models with pre-trained backbones. PyTorch. | MIT License (MIT)    | https://pypi.org/project/segmentation-models-pytorch/  |
+| shapely  |Manipulation and analysis of geometric objects |BSD License (BSD 3-Clause)    | https://pypi.org/project/shapely/   |
 
 ## Getting started
 
