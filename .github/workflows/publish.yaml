@@ -34,7 +34,7 @@ concurrency:
 
 jobs:
   release:
-    runs-on: html_publisher
+    runs-on: ubuntu-latest
     steps:
 
       - name: Checkout project
